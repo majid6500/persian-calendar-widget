@@ -9,7 +9,7 @@ import time
 from PySide6.QtCore import QCoreApplication, QObject, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 
-APP_KEY = "PersianCalendarWidget-0.1.0"
+APP_KEY = "PersianCalendarWidget"
 
 
 def server_name(suffix: str = "") -> str:

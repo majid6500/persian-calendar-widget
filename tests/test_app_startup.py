@@ -33,7 +33,7 @@ def test_parse_args_flags() -> None:
 
 def test_version_cli_does_not_start_the_ui(capsys) -> None:
     assert app_main.main(["--version"]) == 0
-    assert capsys.readouterr().out.strip() == "0.1.0"
+    assert capsys.readouterr().out.strip() == "0.2.0"
 
 
 def test_smoke_test_subprocess_writes_report(tmp_path: Path) -> None:
@@ -76,6 +76,10 @@ def test_smoke_test_subprocess_writes_report(tmp_path: Path) -> None:
     assert stdout_report["calendar_cells"] == 42
     assert stdout_report["settings_visible"] is True
     assert stdout_report["coverage"] == [1402, 1426]
+    assert stdout_report["weather_assets"]["background_count"] == 14
+    assert stdout_report["weather_assets"]["icon_count"] == 24
+    assert stdout_report["weather_assets"]["missing"] == []
+    assert stdout_report["weather_assets"]["decode_failures"] == []
 
     assert report_path.is_file()
     report = json.loads(report_path.read_text(encoding="utf-8"))

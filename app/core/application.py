@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QWidget
 
 from app.calendar import localization as loc
 from app.calendar.holidays import HolidayService
@@ -52,6 +52,7 @@ class CalendarApplication(QObject):
         self.tray: SystemTray | None = None
         self.single_instance = None
         self._settings_original = self.values
+        self._settings_return_page: QWidget | None = None
         self._last_date = None
         self._last_minute = None
         self._quitting = False
@@ -81,6 +82,7 @@ class CalendarApplication(QObject):
     def _connect_widget(self) -> None:
         self.widget.calendarRequested.connect(self.open_calendar)
         self.widget.settingsRequested.connect(self.open_settings)
+        self.widget.pageSwipeRequested.connect(self._navigate_page)
         self.widget.hideRequested.connect(self.hide_widget)
         self.widget.quitRequested.connect(self.quit)
         self.widget.weatherRefreshRequested.connect(self._refresh_weather)
@@ -154,32 +156,71 @@ class CalendarApplication(QObject):
     # ---------------------------------------------------------------- calendar
     def open_calendar(self, anchor=None) -> None:
         if self.calendar is None:
-            self.calendar = MonthCalendar(self.service, self.values)
+            self.calendar = MonthCalendar(
+                self.service, self.values, self.widget, embedded=True
+            )
             self.calendar.settingsRequested.connect(self.open_settings)
+            self.calendar.closeRequested.connect(
+                lambda: self.widget.show_page(None, -1)
+            )
+            self.calendar.backRequested.connect(
+                lambda: self.widget.show_page(None, -1)
+            )
+            self.calendar.swipeRequested.connect(self._navigate_page)
         self.calendar.set_accent(self.values.accent)
         self.calendar.go_today()
         self.calendar.show_calendar(anchor or self.widget)
+        direction = -1 if self.widget.active_page is self.settings_window else 1
+        self.widget.show_page(self.calendar, direction)
 
     def hide_calendar(self) -> None:
-        if self.calendar is not None:
-            self.calendar.hide()
+        if self.calendar is not None and self.widget.active_page is self.calendar:
+            self.widget.show_page(None, -1)
 
     # ---------------------------------------------------------------- settings
     def open_settings(self, anchor=None) -> None:
         if self.settings_window is None:
-            self.settings_window = SettingsWindow(self.values)
+            self.settings_window = SettingsWindow(
+                self.values, parent=self.widget, embedded=True
+            )
             self.settings_window.valuesChanged.connect(self._on_settings_preview)
             self.settings_window.saveRequested.connect(self._on_settings_save)
             self.settings_window.cancelled.connect(self._on_settings_cancel)
-        if not self.settings_window.isVisible():
+            self.settings_window.swipeRequested.connect(self._navigate_page)
+            self.settings_window.backRequested.connect(
+                self.settings_window.cancel
+            )
+        if self.widget.active_page is not self.settings_window:
             self._settings_original = self.saved_values
+            self._settings_return_page = (
+                self.calendar
+                if self.widget.active_page is self.calendar
+                else None
+            )
         self.settings_window.show_window(self.values, anchor or self.widget)
+        self.widget.show_page(self.settings_window, 1)
+
+    def _navigate_page(self, direction: int) -> None:
+        page = self.widget.active_page
+        if direction > 0:
+            if page is None:
+                self.open_calendar()
+            elif page is self.calendar:
+                self.open_settings()
+            return
+        if page is self.settings_window:
+            if self.settings_window is not None:
+                self.settings_window.cancel()
+        elif page is self.calendar:
+            self.widget.show_page(None, -1)
 
     def _on_settings_preview(self, values: SettingsValues) -> None:
         self._apply_values(values, persist=False)
 
     def _on_settings_cancel(self) -> None:
         self._apply_values(self._settings_original, persist=False)
+        self.widget.show_page(self._settings_return_page, -1)
+        self._settings_return_page = None
 
     def _on_settings_save(self, values: SettingsValues) -> None:
         values = values.normalized()
@@ -206,6 +247,8 @@ class CalendarApplication(QObject):
             self._configure_weather(self.saved_values)
         if self.settings_window is not None:
             self.settings_window.accept_and_close()
+        self.widget.show_page(self._settings_return_page, -1)
+        self._settings_return_page = None
         if self.tray is not None:
             self.tray.set_tooltip(
                 f"{loc.long_date(jalali_today())}"

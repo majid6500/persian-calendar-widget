@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+<title>Overcast</title>
+<g id="cloud_back" fill="#5FA3E6" transform="translate(18 -10) scale(0.9)"><circle cx="30" cy="70" r="16"/><circle cx="58" cy="52" r="22"/><circle cx="90" cy="66" r="20"/><rect x="30" y="62" width="60" height="24"/><rect x="30" y="66" width="60" height="20" rx="0"/></g><g id="cloud_front" fill="#72C0FF" transform="translate(-4 10) scale(0.95)"><circle cx="30" cy="70" r="16"/><circle cx="58" cy="52" r="22"/><circle cx="90" cy="66" r="20"/><rect x="30" y="62" width="60" height="24"/><rect x="30" y="66" width="60" height="20" rx="0"/></g>
+</svg>

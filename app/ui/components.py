@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 from PySide6.QtCore import (
+    QEvent,
     Property,
     QEasingCurve,
     QPoint,
     QPointF,
     QPropertyAnimation,
     QRectF,
+    Signal,
     Qt,
 )
 from PySide6.QtGui import (
@@ -22,10 +24,16 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractButton,
+    QAbstractItemView,
+    QApplication,
+    QComboBox,
     QFrame,
     QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
+    QScrollBar,
+    QSlider,
     QSizePolicy,
     QVBoxLayout,
     QWidget,
@@ -506,25 +514,41 @@ class TitleBar(QWidget):
 class FramelessWindow(QWidget):
     """Rounded, shadowed, draggable window shell."""
 
-    def __init__(self, parent: QWidget | None = None, *, shadow: bool = True) -> None:
+    swipeRequested = Signal(int)
+    backRequested = Signal()
+
+    def __init__(
+        self,
+        parent: QWidget | None = None,
+        *,
+        shadow: bool = True,
+        embedded: bool = False,
+    ) -> None:
         super().__init__(parent)
+        self._embedded = embedded
+        self._swipe_origin: QPoint | None = None
         self.setWindowFlags(
-            Qt.WindowType.Tool
-            | Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.Window
+            Qt.WindowType.Widget
+            if embedded
+            else (
+                Qt.WindowType.Tool
+                | Qt.WindowType.FramelessWindowHint
+                | Qt.WindowType.Window
+            )
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(22, 22, 22, 22)
+        margin = 0 if embedded else 22
+        outer.setContentsMargins(margin, margin, margin, margin)
         outer.setSpacing(0)
 
         self.card = QWidget(self)
-        self.card.setObjectName("card")
+        self.card.setObjectName("embeddedCard" if embedded else "card")
         outer.addWidget(self.card)
 
-        if shadow:
+        if shadow and not embedded:
             effect = QGraphicsDropShadowEffect(self.card)
             effect.setBlurRadius(38)
             effect.setOffset(0, 10)
@@ -532,7 +556,12 @@ class FramelessWindow(QWidget):
             self.card.setGraphicsEffect(effect)
 
         self.card_layout = QVBoxLayout(self.card)
-        self.card_layout.setContentsMargins(18, 14, 18, 18)
+        self.card_layout.setContentsMargins(
+            18,
+            12 if embedded else 14,
+            18 if embedded else 18,
+            12 if embedded else 18,
+        )
         self.card_layout.setSpacing(10)
 
         self.title_bar = TitleBar(self)
@@ -542,6 +571,80 @@ class FramelessWindow(QWidget):
         self.body.setContentsMargins(0, 0, 0, 0)
         self.body.setSpacing(10)
         self.card_layout.addLayout(self.body, 1)
+        if embedded:
+            self.setMouseTracking(True)
+            self._install_swipe_filter()
+
+    def _install_swipe_filter(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
+
+    def _remove_swipe_filter(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
+
+    def eventFilter(self, watched, event) -> bool:  # type: ignore[override]
+        if not self._embedded or not isinstance(watched, QWidget):
+            return super().eventFilter(watched, event)
+        if watched is not self and not self.isAncestorOf(watched):
+            return super().eventFilter(watched, event)
+        if event.type() == QEvent.Type.KeyPress and event.key() == Qt.Key.Key_Escape:
+            self.backRequested.emit()
+            return True
+        if event.type() == QEvent.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                if isinstance(
+                    watched,
+                    (
+                        QAbstractButton,
+                        QAbstractItemView,
+                        QComboBox,
+                        QLineEdit,
+                        QSlider,
+                        QScrollBar,
+                    ),
+                ) or watched.property("swipeIgnore"):
+                    self._swipe_origin = None
+                else:
+                    self._swipe_origin = event.globalPosition().toPoint()
+        elif (
+            event.type() == QEvent.Type.MouseButtonRelease
+            and event.button() == Qt.MouseButton.LeftButton
+            and self._swipe_origin is not None
+        ):
+            delta = event.globalPosition().toPoint() - self._swipe_origin
+            if (
+                abs(delta.x()) >= QApplication.startDragDistance() * 2
+                and abs(delta.x()) > abs(delta.y()) * 1.4
+            ):
+                self.swipeRequested.emit(1 if delta.x() < 0 else -1)
+            self._swipe_origin = None
+        return super().eventFilter(watched, event)
+
+    def showEvent(self, event) -> None:  # type: ignore[override]
+        if self._embedded:
+            self._install_swipe_filter()
+        super().showEvent(event)
+
+    def hideEvent(self, event) -> None:  # type: ignore[override]
+        if self._embedded:
+            self._remove_swipe_filter()
+            self._swipe_origin = None
+        super().hideEvent(event)
+
+    def mousePressEvent(self, event) -> None:  # type: ignore[override]
+        if self._embedded:
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # type: ignore[override]
+        if self._embedded:
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def show_near(self, anchor: QWidget | None = None) -> None:
         target_screen = None

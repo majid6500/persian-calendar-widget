@@ -76,6 +76,7 @@ class DayCell(QWidget):
         has_occasion: bool,
         accent: str,
         parent: QWidget | None = None,
+        cell_height: int = CELL_HEIGHT,
     ) -> None:
         super().__init__(parent)
         self.date = date
@@ -86,7 +87,8 @@ class DayCell(QWidget):
         self.has_occasion = has_occasion
         self.accent = accent
         self._hover = False
-        self.setFixedSize(CELL_WIDTH, CELL_HEIGHT)
+        self.setProperty("swipeIgnore", True)
+        self.setFixedSize(CELL_WIDTH, cell_height)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.setAccessibleName(loc.long_date(date))
@@ -189,14 +191,17 @@ class DayCell(QWidget):
 
 class MonthCalendar(FramelessWindow):
     settingsRequested = Signal()
+    closeRequested = Signal()
 
     def __init__(
         self,
         service: HolidayService,
         values: SettingsValues,
         parent: QWidget | None = None,
+        *,
+        embedded: bool = False,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent, embedded=embedded)
         self.service = service
         self._accent = values.accent
         self._today: JalaliDate = jalali_today()
@@ -204,9 +209,11 @@ class MonthCalendar(FramelessWindow):
         self._view_year = self._today.year
         self._view_month = self._today.month
         self._cells: list[DayCell] = []
+        self._cell_height = 30 if embedded else CELL_HEIGHT
 
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.setFixedSize(NATURAL_WIDTH, NATURAL_HEIGHT)
+        if not embedded:
+            self.setFixedSize(NATURAL_WIDTH, NATURAL_HEIGHT)
         self.title_bar.set_title("تقویم شمسی")
 
         self.today_button = QPushButton("امروز")
@@ -223,7 +230,9 @@ class MonthCalendar(FramelessWindow):
         self.title_bar.add_action(self.settings_button)
 
         self.close_button = IconButton("close", 30, MUTED, "بستن", self)
-        self.close_button.clicked.connect(self.hide)
+        self.close_button.clicked.connect(
+            self.closeRequested.emit if embedded else self.hide
+        )
         self.title_bar.add_action(self.close_button)
 
         # Scrollable body for small screens; on normal displays no scrollbar
@@ -239,7 +248,7 @@ class MonthCalendar(FramelessWindow):
         self.content.setObjectName("transparentRoot")
         self.content_layout = QVBoxLayout(self.content)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
-        self.content_layout.setSpacing(8)
+        self.content_layout.setSpacing(3 if self._embedded else 8)
         self.scroll.setWidget(self.content)
 
         self._build_header()
@@ -253,12 +262,13 @@ class MonthCalendar(FramelessWindow):
         header = QFrame()
         header.setObjectName("monthHeader")
         row = QHBoxLayout(header)
-        row.setContentsMargins(10, 6, 10, 6)
-        row.setSpacing(8)
+        row.setContentsMargins(8, 3 if self._embedded else 6, 8, 3 if self._embedded else 6)
+        row.setSpacing(5 if self._embedded else 8)
 
-        self.prev_button = IconButton("chevron-right", 34, TEXT, "ماه قبل", self)
+        button_size = 28 if self._embedded else 34
+        self.prev_button = IconButton("chevron-right", button_size, TEXT, "ماه قبل", self)
         self.prev_button.clicked.connect(self.go_previous)
-        self.next_button = IconButton("chevron-left", 34, TEXT, "ماه بعد", self)
+        self.next_button = IconButton("chevron-left", button_size, TEXT, "ماه بعد", self)
         self.next_button.clicked.connect(self.go_next)
 
         month_box = QWidget()
@@ -268,9 +278,13 @@ class MonthCalendar(FramelessWindow):
         month_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.month_label = QLabel()
         self.month_label.setObjectName("monthTitle")
+        if self._embedded:
+            self.month_label.setStyleSheet("font-size: 15pt;")
         self.month_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.gregorian_label = QLabel()
         self.gregorian_label.setObjectName("gregorian")
+        if self._embedded:
+            self.gregorian_label.setStyleSheet("font-size: 8pt;")
         self.gregorian_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         month_layout.addWidget(self.month_label)
         month_layout.addWidget(self.gregorian_label)
@@ -284,14 +298,15 @@ class MonthCalendar(FramelessWindow):
         row = QWidget()
         layout = QHBoxLayout(row)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(CELL_SPACING)
+        layout.setSpacing(2 if self._embedded else CELL_SPACING)
         for index in range(7):
             label = QLabel(loc.weekday_short(index))
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             label.setFixedWidth(CELL_WIDTH)
             label.setStyleSheet(
                 f"color: {DANGER if index == 6 else MUTED};"
-                "font-size: 9pt; font-weight: 600; background: transparent;"
+                f"font-size: {'8pt' if self._embedded else '9pt'}; "
+                "font-weight: 600; background: transparent;"
             )
             layout.addWidget(label)
         layout.addStretch(0)
@@ -301,7 +316,8 @@ class MonthCalendar(FramelessWindow):
         self.grid_host = QWidget()
         self.grid = QGridLayout(self.grid_host)
         self.grid.setContentsMargins(0, 0, 0, 0)
-        self.grid.setSpacing(CELL_SPACING)
+        self.grid.setHorizontalSpacing(2 if self._embedded else CELL_SPACING)
+        self.grid.setVerticalSpacing(1 if self._embedded else CELL_SPACING)
         self.grid.setAlignment(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop)
         self.content_layout.addWidget(self.grid_host)
 
@@ -309,10 +325,11 @@ class MonthCalendar(FramelessWindow):
         self.details = QFrame()
         self.details.setObjectName("details")
         self.details.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        self.details.setMinimumHeight(148)
+        self.details.setMinimumHeight(82 if self._embedded else 148)
         layout = QVBoxLayout(self.details)
-        layout.setContentsMargins(14, 12, 14, 12)
-        layout.setSpacing(5)
+        margins = 8 if self._embedded else 14
+        layout.setContentsMargins(margins, 6 if self._embedded else 12, margins, 6 if self._embedded else 12)
+        layout.setSpacing(3 if self._embedded else 5)
 
         top = QHBoxLayout()
         top.setContentsMargins(0, 0, 0, 0)
@@ -392,6 +409,7 @@ class MonthCalendar(FramelessWindow):
                     has_occasion=occasion,
                     accent=self._accent,
                     parent=self.grid_host,
+                    cell_height=self._cell_height,
                 )
                 cell.clicked.connect(self._on_day_clicked)
                 titles = "، ".join(event.title for event in events)
@@ -531,6 +549,9 @@ class MonthCalendar(FramelessWindow):
     # ----------------------------------------------------------------- window
     def show_calendar(self, anchor: QWidget | None = None) -> None:
         self.update_today()
+        if self._embedded:
+            self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+            return
         self.adjust_to_screen(anchor)
         self.show_near(anchor)
         self.show_with_fade()
@@ -538,6 +559,8 @@ class MonthCalendar(FramelessWindow):
         self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
 
     def adjust_to_screen(self, anchor: QWidget | None = None) -> None:
+        if self._embedded:
+            return
         screen = anchor.screen() if anchor is not None and anchor.isVisible() else None
         if screen is None:
             screen = QGuiApplication.screenAt(self.pos()) or QGuiApplication.primaryScreen()
@@ -555,7 +578,10 @@ class MonthCalendar(FramelessWindow):
     def keyPressEvent(self, event) -> None:  # type: ignore[override]
         key = event.key()
         if key == Qt.Key.Key_Escape:
-            self.hide()
+            if self._embedded:
+                self.closeRequested.emit()
+            else:
+                self.hide()
         elif key == Qt.Key.Key_PageUp:
             self.go_previous()
         elif key == Qt.Key.Key_PageDown:

@@ -58,8 +58,10 @@ class SettingsWindow(FramelessWindow):
         values: SettingsValues,
         parent: QWidget | None = None,
         city_search: object | None = None,
+        *,
+        embedded: bool = False,
     ) -> None:
-        super().__init__(parent)
+        super().__init__(parent, embedded=embedded)
         self._values = values
         self._loading = True
         self._saved = False
@@ -69,7 +71,8 @@ class SettingsWindow(FramelessWindow):
         self._selected_location: WeatherLocation | None = None
 
         self.setLayoutDirection(Qt.LayoutDirection.RightToLeft)
-        self.setFixedSize(NATURAL_WIDTH, NATURAL_HEIGHT)
+        if not embedded:
+            self.setFixedSize(NATURAL_WIDTH, NATURAL_HEIGHT)
         self.title_bar.set_title("تنظیمات")
         self.close_button = IconButton("close", 30, MUTED, "بستن", self)
         self.close_button.clicked.connect(self.cancel)
@@ -647,7 +650,8 @@ class SettingsWindow(FramelessWindow):
             if cancel is not None:
                 cancel()
         self._saved = True
-        self.hide()
+        if not self._embedded:
+            self.hide()
 
     def cancel(self) -> None:
         if self._city_search is not None:
@@ -656,10 +660,12 @@ class SettingsWindow(FramelessWindow):
                 cancel()
         if self._saved:
             self._saved = False
-            self.hide()
+            if not self._embedded:
+                self.hide()
             return
         self.cancelled.emit()
-        self.hide()
+        if not self._embedded:
+            self.hide()
 
     def show_error(self, message: str) -> None:
         self.error_label.setText(message)
@@ -667,6 +673,9 @@ class SettingsWindow(FramelessWindow):
 
     def show_window(self, values: SettingsValues, anchor: QWidget | None = None) -> None:
         self.load_values(values)
+        if self._embedded:
+            self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
+            return
         self.adjust_to_screen(anchor)
         self.show_near(anchor)
         self.show_with_fade()
@@ -674,6 +683,8 @@ class SettingsWindow(FramelessWindow):
         self.setFocus(Qt.FocusReason.ActiveWindowFocusReason)
 
     def adjust_to_screen(self, anchor: QWidget | None = None) -> None:
+        if self._embedded:
+            return
         screen = anchor.screen() if anchor is not None and anchor.isVisible() else None
         if screen is None:
             screen = QGuiApplication.primaryScreen()

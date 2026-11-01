@@ -57,7 +57,7 @@ def _set_app_user_model_id() -> None:
         return
     try:
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
-            "PersianCalendarWidget.0.1.0"
+            "PersianCalendarWidget.0.2.0"
         )
     except Exception:
         pass
@@ -135,6 +135,19 @@ def _run_diagnostics(
                 if controller.weather.state.location is not None
                 else None
             )
+
+            from app.weather.art import WeatherArt
+            from app.weather.visuals import validate_assets
+
+            asset_report = validate_assets()
+            asset_decode_failures = WeatherArt().validate_files()
+            result["weather_assets"] = {
+                "background_count": asset_report.background_count,
+                "icon_count": asset_report.icon_count,
+                "missing": list(asset_report.missing),
+                "decode_failures": list(asset_decode_failures),
+            }
+
             result["holiday_loaded"] = controller.service.is_loaded
             result["holiday_error"] = controller.service.load_error
             result["holiday_count"] = controller.service.holiday_count
@@ -179,6 +192,8 @@ def _run_diagnostics(
                 and result["holiday_loaded"]
                 and result["calendar_cells"] == 42
                 and result["settings_visible"]
+                and asset_report.ok
+                and not asset_decode_failures
             )
             result["ok"] = ok
             print("SMOKE " + json.dumps(result, ensure_ascii=False), flush=True)

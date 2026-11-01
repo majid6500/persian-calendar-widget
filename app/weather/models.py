@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import math
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -47,6 +48,27 @@ def _as_int(value: object, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return default
+
+
+def _optional_float(value: object) -> float | None:
+    if value is None:
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) and number >= 0 else None
+
+
+def _optional_time(value: object) -> dt.time | None:
+    if isinstance(value, dt.time):
+        return value.replace(tzinfo=None)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        return dt.time.fromisoformat(value.strip()).replace(tzinfo=None)
+    except ValueError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -166,6 +188,9 @@ class WeatherSnapshot:
     wind_speed_unit: str = "kmh"
     apparent_temperature: float | None = None
     from_cache: bool = False
+    sunrise: dt.time | None = None
+    sunset: dt.time | None = None
+    uv_index: float | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "temperature_unit", normalize_temperature_unit(self.temperature_unit))
@@ -181,6 +206,9 @@ class WeatherSnapshot:
                 "apparent_temperature",
                 _as_float(self.apparent_temperature, 0.0),
             )
+        object.__setattr__(self, "sunrise", _optional_time(self.sunrise))
+        object.__setattr__(self, "sunset", _optional_time(self.sunset))
+        object.__setattr__(self, "uv_index", _optional_float(self.uv_index))
         object.__setattr__(self, "daily", tuple(self.daily))
         if self.fetched_at.tzinfo is None:
             object.__setattr__(
@@ -211,6 +239,9 @@ class WeatherSnapshot:
             "location": self.location.to_dict(),
             "temperature": float(self.temperature),
             "apparent_temperature": self.apparent_temperature,
+            "sunrise": self.sunrise.isoformat() if self.sunrise else None,
+            "sunset": self.sunset.isoformat() if self.sunset else None,
+            "uv_index": self.uv_index,
             "humidity": self.humidity,
             "wind_speed": self.wind_speed,
             "weather_code": int(self.weather_code),
@@ -251,6 +282,9 @@ class WeatherSnapshot:
                 wind_speed_unit=str(payload.get("wind_speed_unit", "kmh")),
                 apparent_temperature=payload.get("apparent_temperature"),
                 from_cache=True,
+                sunrise=payload.get("sunrise"),
+                sunset=payload.get("sunset"),
+                uv_index=payload.get("uv_index"),
             )
         except (KeyError, TypeError, ValueError):
             return None

@@ -17,9 +17,8 @@ __pycache__/
 .coverage.*
 
 # Build outputs and packaged applications
-build/
-build_neon/
-dist/
+build*/
+dist*/
 *.spec.bak
 
 # Local editor and operating system files
@@ -34,6 +33,3 @@ Desktop.ini
 *.log
 screenshots/
 shots/
-
-# Local project handoff notes
-PROJECT-HANDOFF.txt

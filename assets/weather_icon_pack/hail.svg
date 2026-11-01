@@ -1,0 +1,4 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+<title>Hail</title>
+<g id="cloud" fill="#5FA3E6" transform="translate(2 -6) scale(1)"><circle cx="30" cy="70" r="16"/><circle cx="58" cy="52" r="22"/><circle cx="90" cy="66" r="20"/><rect x="30" y="62" width="60" height="24"/><rect x="30" y="66" width="60" height="20" rx="0"/></g><g id="hail" fill="#5FA3E6"><circle cx="38" cy="94" r="4.5"/><circle cx="54" cy="106" r="4.5"/><circle cx="70" cy="94" r="4.5"/><circle cx="86" cy="106" r="4.5"/><circle cx="100" cy="94" r="4.5"/></g>
+</svg>

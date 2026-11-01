@@ -28,7 +28,7 @@ from app.weather.models import (
 
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
-USER_AGENT = "PersianCalendarWidget/0.1.0"
+USER_AGENT = "PersianCalendarWidget/0.2.0"
 
 CURRENT_FIELDS = (
     "temperature_2m",
@@ -37,11 +37,14 @@ CURRENT_FIELDS = (
     "weather_code",
     "wind_speed_10m",
     "is_day",
+    "uv_index",
 )
 DAILY_FIELDS = (
     "weather_code",
     "temperature_2m_max",
     "temperature_2m_min",
+    "sunrise",
+    "sunset",
 )
 
 
@@ -62,6 +65,83 @@ def _as_int(value: object) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _local_time(value: object) -> dt.datetime | None:
+    """Parse an Open-Meteo local timestamp without applying a conversion.
+
+    With ``timezone`` set in the request, both ``current.time`` and
+    ``daily.sunrise``/``daily.sunset`` are already expressed in the selected
+    city's local time.  The wall-clock values are therefore compared directly.
+    """
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    return parsed.replace(tzinfo=None)
+
+
+def _sun_times_for_current_day(
+    current: dict[str, object], daily_payload: object
+) -> tuple[dt.datetime | None, dt.datetime | None]:
+    """Return local sunrise and sunset for the current response date."""
+    if not isinstance(daily_payload, dict):
+        return None, None
+    current_time = _local_time(current.get("time"))
+    if current_time is None:
+        return None, None
+
+    times = daily_payload.get("time")
+    sunrise_values = daily_payload.get("sunrise")
+    sunset_values = daily_payload.get("sunset")
+    if not (
+        isinstance(times, list)
+        and isinstance(sunrise_values, list)
+        and isinstance(sunset_values, list)
+    ):
+        return None, None
+
+    index: int | None = None
+    for candidate, date_text in enumerate(times):
+        try:
+            if dt.date.fromisoformat(str(date_text)) == current_time.date():
+                index = candidate
+                break
+        except (TypeError, ValueError):
+            continue
+    if index is None or index >= len(sunrise_values) or index >= len(sunset_values):
+        return None, None
+
+    sunrise = _local_time(sunrise_values[index])
+    sunset = _local_time(sunset_values[index])
+    if sunrise is None or sunset is None or sunset <= sunrise:
+        return None, None
+    return sunrise, sunset
+
+
+def _is_day_from_sunrise_sunset(
+    current: dict[str, object], daily_payload: object
+) -> bool | None:
+    """Use the same response's sunrise/sunset when ``is_day`` is absent."""
+    sunrise, sunset = _sun_times_for_current_day(current, daily_payload)
+    current_time = _local_time(current.get("time"))
+    if sunrise is None or sunset is None or current_time is None:
+        return None
+    return sunrise <= current_time < sunset
+
+
+def _resolve_is_day(
+    current: dict[str, object], daily_payload: object
+) -> bool:
+    """Prefer the API's current.is_day, then fall back to sunrise/sunset."""
+    value = current.get("is_day")
+    parsed = _as_int(value)
+    if parsed is not None:
+        return bool(parsed)
+    fallback = _is_day_from_sunrise_sunset(current, daily_payload)
+    return True if fallback is None else fallback
 
 
 def build_forecast_url(
@@ -126,12 +206,13 @@ def parse_forecast_payload(
     humidity = _as_int(current.get("relative_humidity_2m"))
     wind_speed = _as_float(current.get("wind_speed_10m"))
     apparent = _as_float(current.get("apparent_temperature"))
+    uv_index = _as_float(current.get("uv_index"))
     weather_code = _as_int(current.get("weather_code"))
-    is_day_value = current.get("is_day", 1)
-    is_day = bool(_as_int(is_day_value) if is_day_value is not None else 1)
+    daily_payload = payload.get("daily")
+    is_day = _resolve_is_day(current, daily_payload)
+    sunrise, sunset = _sun_times_for_current_day(current, daily_payload)
 
     daily: list[DailyForecast] = []
-    daily_payload = payload.get("daily")
     if isinstance(daily_payload, dict):
         times = daily_payload.get("time")
         codes = daily_payload.get("weather_code")
@@ -169,6 +250,9 @@ def parse_forecast_payload(
         wind_speed_unit=wind_speed_unit,
         apparent_temperature=apparent,
         from_cache=False,
+        sunrise=sunrise.time() if sunrise is not None else None,
+        sunset=sunset.time() if sunset is not None else None,
+        uv_index=uv_index,
     )
 
 

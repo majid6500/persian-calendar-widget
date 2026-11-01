@@ -24,6 +24,8 @@ if (-not (Test-Path $Python)) {
 if (-not (Test-Path $Spec)) {
     throw "Spec file not found: $Spec"
 }
+$Version = (& $Python -c "from app import __version__; print(__version__)").Trim()
+$Archive = Join-Path $Root "dist\PersianCalendarWidget-$Version-portable.zip"
 
 Push-Location $Root
 try {
@@ -64,9 +66,17 @@ try {
         throw "Packaged smoke test reported failure. See $Report"
     }
 
+    Write-Host "Creating portable ZIP..."
+    Compress-Archive `
+        -Path (Join-Path $Root "dist\PersianCalendarWidget") `
+        -DestinationPath $Archive `
+        -CompressionLevel Optimal `
+        -Force
+
     Write-Host ""
     Write-Host "Build complete: $Root\dist\PersianCalendarWidget\"
     Write-Host "Executable:    $Exe"
+    Write-Host "Portable ZIP:  $Archive"
     Write-Host "Smoke report:  $Report"
 }
 finally {

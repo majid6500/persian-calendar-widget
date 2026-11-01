@@ -12,7 +12,13 @@ from app.calendar import localization as loc
 from app.calendar.holidays import CalendarEvent
 from app.storage.settings import SettingsValues
 from app.weather.models import DailyForecast, WeatherLocation, WeatherSnapshot, WeatherState
-from app.widgets.floating_widget import BASE_HEIGHT, BASE_WIDTH, FloatingWidget
+from app.widgets.floating_widget import (
+    BASE_HEIGHT,
+    BASE_WIDTH,
+    FloatingWidget,
+    _time_text,
+    _uv_text,
+)
 
 
 def _event(index: int) -> CalendarEvent:
@@ -60,6 +66,13 @@ def test_apply_settings_scales_and_clamps(qtbot) -> None:
     assert widget._scale == 0.8
     assert widget.width() == round(BASE_WIDTH * 0.8)
     assert widget.height() == round(BASE_HEIGHT * 0.8)
+
+
+def test_weather_detail_formatting_uses_persian_time_and_uv_levels() -> None:
+    assert _time_text(dt.time(6, 12)) == "۰۶:۱۲"
+    assert _uv_text(2.8) == "شاخص UV ۲٫۸ • کم"
+    assert _uv_text(5.4) == "شاخص UV ۵٫۴ • متوسط"
+    assert _uv_text(None) == "شاخص UV —"
 
 
 def test_default_position_is_inside_the_screen(qtbot) -> None:
@@ -205,6 +218,10 @@ def _weather_snapshot() -> tuple[WeatherState, WeatherLocation]:
             DailyForecast(dt.date(2026, 10, 29), 61, 19, 10),
         ),
         fetched_at=dt.datetime.now().astimezone(),
+        apparent_temperature=17.9,
+        sunrise=dt.time(6, 12),
+        sunset=dt.time(17, 10),
+        uv_index=2.8,
     )
     return WeatherState("ready", snapshot=snapshot, location=location), location
 
@@ -237,4 +254,3 @@ def test_idle_weather_state_still_paints(qtbot) -> None:
     widget.set_weather_state(WeatherState("idle"))
     assert not widget.grab().isNull()
     assert widget._attribution_rect.isEmpty()
-

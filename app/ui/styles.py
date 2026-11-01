@@ -104,6 +104,12 @@ def build_stylesheet(accent: str) -> str:
         border-top: 1px solid {rgba(accent, 46)};
         border-radius: 22px;
     }}
+    QWidget#embeddedCard {{
+        background-color: rgba(8, 13, 20, 224);
+        border: 1px solid rgba(255, 255, 255, 34);
+        border-top: 1px solid {rgba(accent, 92)};
+        border-radius: 20px;
+    }}
     QWidget#transparentRoot {{
         background: transparent;
     }}
